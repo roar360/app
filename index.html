@@ -1,0 +1,1143 @@
+import { useState, useEffect, useRef } from "react";
+
+const MOCK_VIDEOS = [
+  {
+    id: 1,
+    title: "Beautiful Sunset Time-lapse 4K",
+    duration: "3:42",
+    thumbnail: "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?w=400&q=80",
+    channel: "Nature Vision",
+    views: "2.4M",
+    url: "https://youtube.com/watch?v=example1",
+  },
+  {
+    id: 2,
+    title: "Lo-fi Hip Hop Mix - Chill Beats",
+    duration: "1:22:10",
+    thumbnail: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&q=80",
+    channel: "ChillBeats Radio",
+    views: "8.1M",
+    url: "https://youtube.com/watch?v=example2",
+  },
+  {
+    id: 3,
+    title: "Cinematic City Walk - Tokyo 2024",
+    duration: "18:55",
+    thumbnail: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=400&q=80",
+    channel: "Urban Explorer",
+    views: "945K",
+    url: "https://youtube.com/watch?v=example3",
+  },
+];
+
+const MOCK_HISTORY = [
+  { id: 1, title: "Ocean Waves 4K", size: "245 MB", date: "Today, 2:30 PM", type: "video", status: "completed" },
+  { id: 2, title: "Morning Jazz Playlist", size: "48 MB", date: "Yesterday", type: "audio", status: "completed" },
+  { id: 3, title: "Mountain Hiking Trail", size: "512 MB", date: "Apr 17", type: "video", status: "completed" },
+];
+
+const FORMATS = [
+  { label: "MP4 4K", quality: "2160p", size: "~850 MB", icon: "🎬", premium: true },
+  { label: "MP4 1080p", quality: "1080p", size: "~320 MB", icon: "🎬", premium: false },
+  { label: "MP4 720p", quality: "720p", size: "~180 MB", icon: "🎬", premium: false },
+  { label: "MP4 480p", quality: "480p", size: "~95 MB", icon: "🎬", premium: false },
+  { label: "MP3 320kbps", quality: "Audio", size: "~28 MB", icon: "🎵", premium: false },
+  { label: "MP3 128kbps", quality: "Audio", size: "~11 MB", icon: "🎵", premium: false },
+];
+
+const ACTIVE_DOWNLOADS = [
+  { id: 1, title: "City Vibes Documentary", progress: 72, speed: "4.2 MB/s", size: "380 MB", eta: "1m 23s", status: "downloading" },
+  { id: 2, title: "Ambient Study Music", progress: 38, speed: "2.8 MB/s", size: "52 MB", eta: "0m 45s", status: "paused" },
+];
+
+export default function VideoDownloaderApp() {
+  const [activeTab, setActiveTab] = useState("home");
+  const [darkMode, setDarkMode] = useState(true);
+  const [urlInput, setUrlInput] = useState("");
+  const [detectedVideo, setDetectedVideo] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showFormatPicker, setShowFormatPicker] = useState(false);
+  const [downloads, setDownloads] = useState(ACTIVE_DOWNLOADS);
+  const [downloadingFormat, setDownloadingFormat] = useState(null);
+  const [showAdBanner, setShowAdBanner] = useState(true);
+  const [showRewardAd, setShowRewardAd] = useState(false);
+  const [notification, setNotification] = useState(null);
+  const [historyItems] = useState(MOCK_HISTORY);
+  const [showDisclaimer, setShowDisclaimer] = useState(false);
+  const inputRef = useRef(null);
+
+  const theme = {
+    bg: darkMode ? "#0A0A0F" : "#F2F4F8",
+    surface: darkMode ? "#13131A" : "#FFFFFF",
+    surface2: darkMode ? "#1C1C26" : "#F8F9FB",
+    border: darkMode ? "#2A2A38" : "#E4E7EF",
+    text: darkMode ? "#F0F0FA" : "#0D0D1A",
+    textSub: darkMode ? "#8888AA" : "#6B7280",
+    accent: "#00E5FF",
+    accentGlow: darkMode ? "rgba(0,229,255,0.15)" : "rgba(0,150,200,0.1)",
+    accentDark: "#0099BB",
+    red: "#FF4D6D",
+    green: "#39FF8A",
+    yellow: "#FFD600",
+    purple: "#B56EFF",
+    card: darkMode ? "#16161F" : "#FFFFFF",
+  };
+
+  const notify = (msg, type = "success") => {
+    setNotification({ msg, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const analyzeUrl = () => {
+    if (!urlInput.trim()) return;
+    setIsAnalyzing(true);
+    setDetectedVideo(null);
+    setTimeout(() => {
+      const random = MOCK_VIDEOS[Math.floor(Math.random() * MOCK_VIDEOS.length)];
+      setDetectedVideo({ ...random, url: urlInput });
+      setIsAnalyzing(false);
+      setShowFormatPicker(false);
+    }, 1800);
+  };
+
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setUrlInput(text);
+      notify("URL pasted from clipboard!", "info");
+    } catch {
+      setUrlInput("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+      notify("Demo URL loaded!", "info");
+    }
+  };
+
+  const startDownload = (format) => {
+    setDownloadingFormat(format.label);
+    setTimeout(() => {
+      setDownloads(prev => [{
+        id: Date.now(),
+        title: detectedVideo.title,
+        progress: 0,
+        speed: "3.1 MB/s",
+        size: format.size.replace("~", ""),
+        eta: "2m 10s",
+        status: "downloading",
+        format: format.label,
+      }, ...prev]);
+      setDownloadingFormat(null);
+      setShowFormatPicker(false);
+      setActiveTab("downloads");
+      notify(`Downloading ${format.label}...`);
+    }, 800);
+  };
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDownloads(prev => prev.map(d => {
+        if (d.status !== "downloading") return d;
+        const newProgress = Math.min(d.progress + Math.random() * 3, 100);
+        return { ...d, progress: newProgress, status: newProgress >= 100 ? "completed" : "downloading" };
+      }));
+    }, 800);
+    return () => clearInterval(interval);
+  }, []);
+
+  const styles = {
+    app: {
+      width: "390px",
+      height: "844px",
+      background: theme.bg,
+      borderRadius: "44px",
+      overflow: "hidden",
+      position: "relative",
+      display: "flex",
+      flexDirection: "column",
+      fontFamily: "'DM Sans', system-ui, sans-serif",
+      boxShadow: darkMode
+        ? "0 60px 120px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.05), inset 0 1px 0 rgba(255,255,255,0.08)"
+        : "0 60px 120px rgba(0,0,0,0.2), 0 0 0 1px rgba(0,0,0,0.08)",
+    },
+    statusBar: {
+      padding: "14px 28px 8px",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      color: theme.text,
+      fontSize: "12px",
+      fontWeight: "600",
+      flexShrink: 0,
+    },
+    header: {
+      padding: "4px 20px 14px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      flexShrink: 0,
+    },
+    logo: {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+    },
+    logoIcon: {
+      width: "34px",
+      height: "34px",
+      background: `linear-gradient(135deg, ${theme.accent}, ${theme.purple})`,
+      borderRadius: "10px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: "16px",
+    },
+    logoText: {
+      fontSize: "18px",
+      fontWeight: "800",
+      color: theme.text,
+      letterSpacing: "-0.5px",
+    },
+    logoAccent: { color: theme.accent },
+    scrollArea: {
+      flex: 1,
+      overflowY: "auto",
+      padding: "0 16px",
+      scrollbarWidth: "none",
+    },
+    urlBox: {
+      background: theme.surface,
+      borderRadius: "18px",
+      border: `1.5px solid ${theme.border}`,
+      padding: "14px 16px",
+      marginBottom: "16px",
+      transition: "border-color 0.2s",
+    },
+    urlLabel: {
+      fontSize: "11px",
+      fontWeight: "700",
+      color: theme.accent,
+      letterSpacing: "1px",
+      textTransform: "uppercase",
+      marginBottom: "8px",
+    },
+    urlRow: {
+      display: "flex",
+      gap: "8px",
+      alignItems: "center",
+    },
+    urlInput: {
+      flex: 1,
+      background: "transparent",
+      border: "none",
+      outline: "none",
+      color: theme.text,
+      fontSize: "13px",
+      fontFamily: "inherit",
+      placeholder: theme.textSub,
+    },
+    pasteBtn: {
+      background: theme.accentGlow,
+      border: `1px solid ${theme.accent}30`,
+      borderRadius: "10px",
+      padding: "7px 12px",
+      color: theme.accent,
+      fontSize: "12px",
+      fontWeight: "700",
+      cursor: "pointer",
+      whiteSpace: "nowrap",
+    },
+    analyzeBtn: {
+      width: "100%",
+      padding: "14px",
+      background: `linear-gradient(135deg, ${theme.accent}, ${theme.purple})`,
+      border: "none",
+      borderRadius: "14px",
+      color: "#000",
+      fontSize: "15px",
+      fontWeight: "800",
+      cursor: "pointer",
+      marginTop: "10px",
+      letterSpacing: "0.3px",
+    },
+    sectionTitle: {
+      fontSize: "13px",
+      fontWeight: "700",
+      color: theme.textSub,
+      letterSpacing: "1px",
+      textTransform: "uppercase",
+      marginBottom: "12px",
+      marginTop: "20px",
+    },
+    videoCard: {
+      background: theme.card,
+      borderRadius: "18px",
+      overflow: "hidden",
+      border: `1px solid ${theme.border}`,
+      marginBottom: "16px",
+    },
+    thumbnail: {
+      width: "100%",
+      height: "180px",
+      objectFit: "cover",
+      display: "block",
+    },
+    videoInfo: {
+      padding: "14px",
+    },
+    videoTitle: {
+      fontSize: "14px",
+      fontWeight: "700",
+      color: theme.text,
+      lineHeight: "1.4",
+      marginBottom: "6px",
+    },
+    videoMeta: {
+      display: "flex",
+      gap: "10px",
+      alignItems: "center",
+    },
+    metaTag: {
+      background: theme.surface2,
+      borderRadius: "6px",
+      padding: "3px 8px",
+      fontSize: "11px",
+      fontWeight: "600",
+      color: theme.textSub,
+    },
+    downloadBtnRow: {
+      display: "flex",
+      gap: "8px",
+      padding: "0 14px 14px",
+    },
+    btnPrimary: {
+      flex: 1,
+      padding: "11px",
+      background: `linear-gradient(135deg, ${theme.accent}, ${theme.purple})`,
+      border: "none",
+      borderRadius: "12px",
+      color: "#000",
+      fontSize: "13px",
+      fontWeight: "800",
+      cursor: "pointer",
+    },
+    btnSecondary: {
+      padding: "11px 14px",
+      background: theme.surface2,
+      border: `1px solid ${theme.border}`,
+      borderRadius: "12px",
+      color: theme.textSub,
+      fontSize: "13px",
+      cursor: "pointer",
+    },
+    formatSheet: {
+      position: "absolute",
+      bottom: 0,
+      left: 0,
+      right: 0,
+      background: theme.surface,
+      borderRadius: "28px 28px 0 0",
+      padding: "20px 16px 100px",
+      border: `1px solid ${theme.border}`,
+      borderBottom: "none",
+      zIndex: 50,
+      boxShadow: "0 -20px 60px rgba(0,0,0,0.4)",
+    },
+    sheetHandle: {
+      width: "36px",
+      height: "4px",
+      background: theme.border,
+      borderRadius: "2px",
+      margin: "0 auto 16px",
+    },
+    sheetTitle: {
+      fontSize: "16px",
+      fontWeight: "800",
+      color: theme.text,
+      marginBottom: "4px",
+    },
+    sheetSub: {
+      fontSize: "12px",
+      color: theme.textSub,
+      marginBottom: "16px",
+    },
+    formatRow: {
+      display: "flex",
+      alignItems: "center",
+      padding: "13px 14px",
+      background: theme.surface2,
+      borderRadius: "14px",
+      marginBottom: "8px",
+      cursor: "pointer",
+      border: `1px solid ${theme.border}`,
+      gap: "12px",
+      transition: "all 0.15s",
+    },
+    formatLabel: {
+      flex: 1,
+      fontSize: "14px",
+      fontWeight: "700",
+      color: theme.text,
+    },
+    formatSize: {
+      fontSize: "12px",
+      color: theme.textSub,
+    },
+    premiumBadge: {
+      background: `${theme.yellow}20`,
+      border: `1px solid ${theme.yellow}40`,
+      borderRadius: "6px",
+      padding: "2px 7px",
+      fontSize: "10px",
+      fontWeight: "800",
+      color: theme.yellow,
+      letterSpacing: "0.5px",
+    },
+    downloadCard: {
+      background: theme.card,
+      borderRadius: "16px",
+      padding: "14px",
+      marginBottom: "10px",
+      border: `1px solid ${theme.border}`,
+    },
+    dlTitle: {
+      fontSize: "13px",
+      fontWeight: "700",
+      color: theme.text,
+      marginBottom: "8px",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+    },
+    progressBar: {
+      height: "5px",
+      background: theme.surface2,
+      borderRadius: "3px",
+      overflow: "hidden",
+      marginBottom: "8px",
+    },
+    progressFill: (p, status) => ({
+      height: "100%",
+      width: `${p}%`,
+      background: status === "paused"
+        ? theme.yellow
+        : status === "completed"
+          ? theme.green
+          : `linear-gradient(90deg, ${theme.accent}, ${theme.purple})`,
+      borderRadius: "3px",
+      transition: "width 0.6s ease",
+    }),
+    dlMeta: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    dlSpeed: {
+      fontSize: "11px",
+      color: theme.textSub,
+    },
+    dlActions: {
+      display: "flex",
+      gap: "6px",
+    },
+    iconBtn: {
+      width: "28px",
+      height: "28px",
+      background: theme.surface2,
+      border: "none",
+      borderRadius: "8px",
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: "12px",
+    },
+    historyCard: {
+      display: "flex",
+      alignItems: "center",
+      gap: "12px",
+      padding: "12px",
+      background: theme.card,
+      borderRadius: "14px",
+      marginBottom: "8px",
+      border: `1px solid ${theme.border}`,
+    },
+    historyIcon: {
+      width: "40px",
+      height: "40px",
+      borderRadius: "12px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: "18px",
+      flexShrink: 0,
+    },
+    adBanner: {
+      margin: "0 0 16px",
+      padding: "10px 14px",
+      background: darkMode ? "#1A1A28" : "#EEF0FA",
+      borderRadius: "12px",
+      border: `1px dashed ${theme.border}`,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    adText: {
+      fontSize: "11px",
+      color: theme.textSub,
+    },
+    navBar: {
+      display: "flex",
+      background: theme.surface,
+      borderTop: `1px solid ${theme.border}`,
+      padding: "8px 0 20px",
+      flexShrink: 0,
+    },
+    navItem: (active) => ({
+      flex: 1,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      gap: "4px",
+      padding: "6px",
+      cursor: "pointer",
+      color: active ? theme.accent : theme.textSub,
+      transition: "color 0.2s",
+    }),
+    navIcon: {
+      fontSize: "20px",
+    },
+    navLabel: {
+      fontSize: "10px",
+      fontWeight: "700",
+      letterSpacing: "0.5px",
+    },
+    badge: {
+      position: "absolute",
+      top: "-4px",
+      right: "20px",
+      background: theme.red,
+      borderRadius: "6px",
+      padding: "1px 5px",
+      fontSize: "9px",
+      fontWeight: "800",
+      color: "#fff",
+    },
+    notification: {
+      position: "absolute",
+      top: "60px",
+      left: "20px",
+      right: "20px",
+      background: darkMode ? "#1E1E2E" : "#fff",
+      border: `1px solid ${theme.accent}40`,
+      borderRadius: "14px",
+      padding: "12px 16px",
+      fontSize: "13px",
+      color: theme.text,
+      fontWeight: "600",
+      zIndex: 100,
+      boxShadow: `0 8px 30px rgba(0,229,255,0.15)`,
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+    },
+    settingRow: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "14px 16px",
+      background: theme.card,
+      borderRadius: "14px",
+      marginBottom: "8px",
+      border: `1px solid ${theme.border}`,
+    },
+    toggle: (on) => ({
+      width: "44px",
+      height: "24px",
+      background: on ? theme.accent : theme.surface2,
+      borderRadius: "12px",
+      position: "relative",
+      cursor: "pointer",
+      transition: "background 0.2s",
+      border: `1px solid ${on ? theme.accent : theme.border}`,
+    }),
+    toggleDot: (on) => ({
+      position: "absolute",
+      top: "3px",
+      left: on ? "22px" : "3px",
+      width: "16px",
+      height: "16px",
+      background: on ? "#000" : theme.textSub,
+      borderRadius: "50%",
+      transition: "left 0.2s",
+    }),
+    premiumCard: {
+      background: `linear-gradient(135deg, #1A1A30, #2A1A40)`,
+      border: `1px solid ${theme.purple}40`,
+      borderRadius: "18px",
+      padding: "18px",
+      marginBottom: "16px",
+    },
+    premiumTitle: {
+      fontSize: "16px",
+      fontWeight: "800",
+      color: "#fff",
+      marginBottom: "4px",
+    },
+    premiumSub: {
+      fontSize: "12px",
+      color: "rgba(255,255,255,0.5)",
+      marginBottom: "14px",
+    },
+    premiumBtn: {
+      padding: "11px 20px",
+      background: `linear-gradient(135deg, ${theme.yellow}, #FF8C00)`,
+      border: "none",
+      borderRadius: "12px",
+      fontSize: "13px",
+      fontWeight: "800",
+      color: "#000",
+      cursor: "pointer",
+    },
+    disclaimer: {
+      position: "absolute",
+      inset: 0,
+      background: "rgba(0,0,0,0.85)",
+      zIndex: 200,
+      display: "flex",
+      alignItems: "flex-end",
+    },
+    disclaimerBox: {
+      background: theme.surface,
+      borderRadius: "28px 28px 0 0",
+      padding: "24px 20px 40px",
+    },
+    disclaimerTitle: {
+      fontSize: "18px",
+      fontWeight: "800",
+      color: theme.text,
+      marginBottom: "10px",
+    },
+    disclaimerText: {
+      fontSize: "13px",
+      color: theme.textSub,
+      lineHeight: "1.6",
+      marginBottom: "20px",
+    },
+    disclaimerBtn: {
+      width: "100%",
+      padding: "14px",
+      background: `linear-gradient(135deg, ${theme.accent}, ${theme.purple})`,
+      border: "none",
+      borderRadius: "14px",
+      color: "#000",
+      fontSize: "15px",
+      fontWeight: "800",
+      cursor: "pointer",
+    },
+  };
+
+  const activeDownloads = downloads.filter(d => d.status !== "completed");
+  const completedDownloads = downloads.filter(d => d.status === "completed");
+
+  const renderHome = () => (
+    <div style={styles.scrollArea}>
+      {/* Ad Banner */}
+      {showAdBanner && (
+        <div style={styles.adBanner}>
+          <div>
+            <div style={{ ...styles.adText, color: theme.textSub, fontWeight: "600" }}>📢 Advertisement</div>
+            <div style={{ ...styles.adText, fontSize: "10px" }}>Go Premium — No ads, faster downloads</div>
+          </div>
+          <button
+            onClick={() => setShowAdBanner(false)}
+            style={{ background: "none", border: "none", color: theme.textSub, fontSize: "14px", cursor: "pointer" }}
+          >✕</button>
+        </div>
+      )}
+
+      {/* URL Input */}
+      <div style={styles.urlBox}>
+        <div style={styles.urlLabel}>🔗 Paste Video URL</div>
+        <div style={styles.urlRow}>
+          <input
+            ref={inputRef}
+            value={urlInput}
+            onChange={e => setUrlInput(e.target.value)}
+            placeholder="youtube.com, tiktok.com, twitter..."
+            style={styles.urlInput}
+            onKeyDown={e => e.key === "Enter" && analyzeUrl()}
+          />
+          <button style={styles.pasteBtn} onClick={handlePaste}>📋 Paste</button>
+        </div>
+        <button
+          style={{
+            ...styles.analyzeBtn,
+            opacity: isAnalyzing ? 0.7 : 1,
+          }}
+          onClick={analyzeUrl}
+          disabled={isAnalyzing}
+        >
+          {isAnalyzing ? "⏳ Analyzing..." : "🔍 Detect Video"}
+        </button>
+      </div>
+
+      {/* Detected Video Preview */}
+      {isAnalyzing && (
+        <div style={{ ...styles.videoCard, padding: "30px", textAlign: "center" }}>
+          <div style={{ fontSize: "32px", marginBottom: "10px" }}>🔄</div>
+          <div style={{ color: theme.textSub, fontSize: "13px" }}>Fetching video metadata...</div>
+          <div style={{
+            marginTop: "16px",
+            height: "4px",
+            background: theme.surface2,
+            borderRadius: "2px",
+            overflow: "hidden"
+          }}>
+            <div style={{
+              height: "100%",
+              background: `linear-gradient(90deg, ${theme.accent}, ${theme.purple})`,
+              borderRadius: "2px",
+              animation: "slide 1.5s infinite",
+              width: "40%",
+            }} />
+          </div>
+        </div>
+      )}
+
+      {detectedVideo && !isAnalyzing && (
+        <div style={styles.videoCard}>
+          <div style={{ position: "relative" }}>
+            <img src={detectedVideo.thumbnail} alt={detectedVideo.title} style={styles.thumbnail} />
+            <div style={{
+              position: "absolute",
+              bottom: "10px",
+              right: "10px",
+              background: "rgba(0,0,0,0.8)",
+              borderRadius: "6px",
+              padding: "3px 8px",
+              fontSize: "12px",
+              fontWeight: "700",
+              color: "#fff",
+            }}>▶ {detectedVideo.duration}</div>
+          </div>
+          <div style={styles.videoInfo}>
+            <div style={styles.videoTitle}>{detectedVideo.title}</div>
+            <div style={styles.videoMeta}>
+              <span style={styles.metaTag}>📺 {detectedVideo.channel}</span>
+              <span style={styles.metaTag}>👁 {detectedVideo.views}</span>
+            </div>
+          </div>
+          <div style={styles.downloadBtnRow}>
+            <button style={styles.btnPrimary} onClick={() => setShowFormatPicker(true)}>
+              ⬇ Choose Format
+            </button>
+            <button style={styles.btnSecondary} onClick={() => notify("Sharing...")}>📤</button>
+            <button style={styles.btnSecondary} onClick={() => setShowDisclaimer(true)}>ℹ</button>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Actions */}
+      <div style={styles.sectionTitle}>Quick Actions</div>
+      <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
+        {[
+          { icon: "🌐", label: "Browser" },
+          { icon: "📦", label: "Batch" },
+          { icon: "🔄", label: "Convert" },
+          { icon: "⚡", label: "Fast DL" },
+        ].map(action => (
+          <button
+            key={action.label}
+            onClick={() => notify(`${action.label} feature coming soon!`, "info")}
+            style={{
+              flex: 1,
+              background: theme.card,
+              border: `1px solid ${theme.border}`,
+              borderRadius: "14px",
+              padding: "12px 6px",
+              cursor: "pointer",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "5px",
+            }}>
+            <span style={{ fontSize: "20px" }}>{action.icon}</span>
+            <span style={{ fontSize: "10px", fontWeight: "700", color: theme.textSub }}>{action.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Recent */}
+      <div style={styles.sectionTitle}>Recent History</div>
+      {historyItems.map(item => (
+        <div key={item.id} style={styles.historyCard}>
+          <div style={{
+            ...styles.historyIcon,
+            background: item.type === "audio" ? `${theme.purple}20` : `${theme.accent}20`,
+          }}>
+            {item.type === "audio" ? "🎵" : "🎬"}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: "13px", fontWeight: "700", color: theme.text }}>{item.title}</div>
+            <div style={{ fontSize: "11px", color: theme.textSub }}>{item.size} · {item.date}</div>
+          </div>
+          <button
+            style={{ ...styles.iconBtn, fontSize: "14px" }}
+            onClick={() => notify("File shared!")}>📤</button>
+        </div>
+      ))}
+      <div style={{ height: "20px" }} />
+    </div>
+  );
+
+  const renderDownloads = () => (
+    <div style={styles.scrollArea}>
+      {/* Rewarded Ad Promo */}
+      <div style={{
+        background: `linear-gradient(135deg, ${theme.accentGlow}, ${theme.purple}10)`,
+        border: `1px solid ${theme.accent}20`,
+        borderRadius: "14px",
+        padding: "12px 14px",
+        display: "flex",
+        alignItems: "center",
+        gap: "10px",
+        marginBottom: "16px",
+        cursor: "pointer",
+      }} onClick={() => setShowRewardAd(true)}>
+        <span style={{ fontSize: "24px" }}>🎁</span>
+        <div>
+          <div style={{ fontSize: "13px", fontWeight: "700", color: theme.text }}>Watch ad for faster downloads</div>
+          <div style={{ fontSize: "11px", color: theme.textSub }}>Earn 2x speed boost for 30 minutes</div>
+        </div>
+        <span style={{ color: theme.accent, fontSize: "18px", marginLeft: "auto" }}>›</span>
+      </div>
+
+      {activeDownloads.length > 0 && (
+        <>
+          <div style={styles.sectionTitle}>Active Downloads</div>
+          {activeDownloads.map(dl => (
+            <div key={dl.id} style={styles.downloadCard}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                <span style={{ fontSize: "14px" }}>
+                  {dl.status === "paused" ? "⏸" : dl.status === "completed" ? "✅" : "⬇"}
+                </span>
+                <div style={styles.dlTitle}>{dl.title}</div>
+              </div>
+              <div style={styles.progressBar}>
+                <div style={styles.progressFill(dl.progress, dl.status)} />
+              </div>
+              <div style={styles.dlMeta}>
+                <div style={styles.dlSpeed}>
+                  {dl.status === "paused"
+                    ? "Paused"
+                    : dl.status === "completed"
+                      ? "✓ Complete"
+                      : `${dl.speed} · ETA ${dl.eta}`}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ fontSize: "12px", color: theme.accent, fontWeight: "700" }}>
+                    {Math.round(dl.progress)}%
+                  </span>
+                  <div style={styles.dlActions}>
+                    <button
+                      style={styles.iconBtn}
+                      onClick={() => setDownloads(prev => prev.map(d =>
+                        d.id === dl.id ? { ...d, status: d.status === "paused" ? "downloading" : "paused" } : d
+                      ))}>
+                      {dl.status === "paused" ? "▶" : "⏸"}
+                    </button>
+                    <button
+                      style={{ ...styles.iconBtn, color: theme.red }}
+                      onClick={() => setDownloads(prev => prev.filter(d => d.id !== dl.id))}>
+                      🗑
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {completedDownloads.length > 0 && (
+        <>
+          <div style={styles.sectionTitle}>Completed</div>
+          {completedDownloads.map(dl => (
+            <div key={dl.id} style={styles.downloadCard}>
+              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                <span style={{ fontSize: "22px" }}>✅</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: "13px", fontWeight: "700", color: theme.text }}>{dl.title}</div>
+                  <div style={{ fontSize: "11px", color: theme.textSub }}>{dl.size} · {dl.format || "MP4"}</div>
+                </div>
+                <div style={styles.dlActions}>
+                  <button style={styles.iconBtn} onClick={() => notify("File opened!")}>📂</button>
+                  <button style={styles.iconBtn} onClick={() => notify("File shared!")}>📤</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {downloads.length === 0 && (
+        <div style={{ textAlign: "center", padding: "60px 20px" }}>
+          <div style={{ fontSize: "48px", marginBottom: "16px" }}>📥</div>
+          <div style={{ fontSize: "16px", fontWeight: "700", color: theme.text }}>No downloads yet</div>
+          <div style={{ fontSize: "13px", color: theme.textSub, marginTop: "6px" }}>
+            Paste a URL on the Home tab to start
+          </div>
+        </div>
+      )}
+      <div style={{ height: "20px" }} />
+    </div>
+  );
+
+  const renderSettings = () => (
+    <div style={styles.scrollArea}>
+      {/* Premium Card */}
+      <div style={styles.premiumCard}>
+        <div style={{ display: "flex", gap: "4px", marginBottom: "6px" }}>
+          {"⭐⭐⭐".split("").map((s, i) => <span key={i}>{s}</span>)}
+        </div>
+        <div style={styles.premiumTitle}>Go Premium</div>
+        <div style={styles.premiumSub}>No ads · 4K downloads · Batch mode · Priority speed</div>
+        <button style={styles.premiumBtn}>Upgrade — $2.99/mo</button>
+      </div>
+
+      <div style={styles.sectionTitle}>Preferences</div>
+      {[
+        { label: "🌙 Dark Mode", value: darkMode, toggle: () => setDarkMode(!darkMode) },
+        { label: "📋 Auto-paste from clipboard", value: true, toggle: () => notify("Setting saved!") },
+        { label: "🔔 Download notifications", value: true, toggle: () => notify("Setting saved!") },
+        { label: "📶 WiFi only downloads", value: false, toggle: () => notify("Setting saved!") },
+      ].map((s, i) => (
+        <div key={i} style={styles.settingRow}>
+          <span style={{ fontSize: "14px", fontWeight: "600", color: theme.text }}>{s.label}</span>
+          <div style={styles.toggle(s.value)} onClick={s.toggle}>
+            <div style={styles.toggleDot(s.value)} />
+          </div>
+        </div>
+      ))}
+
+      <div style={{ ...styles.sectionTitle, marginTop: "20px" }}>Storage</div>
+      {[
+        { label: "📁 Default Folder", value: "Downloads/Videos" },
+        { label: "🎵 Audio Folder", value: "Downloads/Audio" },
+      ].map((s, i) => (
+        <div key={i} style={styles.settingRow}>
+          <span style={{ fontSize: "14px", fontWeight: "600", color: theme.text }}>{s.label}</span>
+          <span style={{ fontSize: "12px", color: theme.accent }}>{s.value}</span>
+        </div>
+      ))}
+
+      <div style={{ ...styles.sectionTitle, marginTop: "20px" }}>About</div>
+      {[
+        { label: "📦 Version", value: "2.4.1" },
+        { label: "🔄 Check for Updates", value: "›" },
+        { label: "⚖ Disclaimer", value: "›", action: () => setShowDisclaimer(true) },
+        { label: "🗑 Clear Cache", value: "47 MB", action: () => notify("Cache cleared!") },
+      ].map((s, i) => (
+        <div key={i} style={{ ...styles.settingRow, cursor: s.action ? "pointer" : "default" }}
+          onClick={s.action}>
+          <span style={{ fontSize: "14px", fontWeight: "600", color: theme.text }}>{s.label}</span>
+          <span style={{ fontSize: "12px", color: theme.textSub }}>{s.value}</span>
+        </div>
+      ))}
+      <div style={{ height: "20px" }} />
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", background: "#050508" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        input::placeholder { color: #666680; }
+        ::-webkit-scrollbar { display: none; }
+        @keyframes slide {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(350%); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideUp {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+      `}</style>
+      <div style={styles.app}>
+        {/* Notification */}
+        {notification && (
+          <div style={{ ...styles.notification, animation: "fadeIn 0.2s ease" }}>
+            <span>{notification.type === "success" ? "✅" : "ℹ️"}</span>
+            {notification.msg}
+          </div>
+        )}
+
+        {/* Status Bar */}
+        <div style={styles.statusBar}>
+          <span>9:41</span>
+          <span>📶 🔋 98%</span>
+        </div>
+
+        {/* Header */}
+        <div style={styles.header}>
+          <div style={styles.logo}>
+            <div style={styles.logoIcon}>⬇</div>
+            <div style={styles.logoText}>
+              Snap<span style={styles.logoAccent}>Load</span>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              style={{ ...styles.iconBtn, width: "34px", height: "34px", fontSize: "16px" }}
+              onClick={() => setDarkMode(!darkMode)}
+            >
+              {darkMode ? "☀️" : "🌙"}
+            </button>
+          </div>
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === "home" && renderHome()}
+        {activeTab === "downloads" && renderDownloads()}
+        {activeTab === "settings" && renderSettings()}
+
+        {/* Bottom Nav */}
+        <div style={styles.navBar}>
+          {[
+            { id: "home", icon: "🏠", label: "Home" },
+            { id: "downloads", icon: "⬇", label: "Downloads", badge: activeDownloads.length || null },
+            { id: "settings", icon: "⚙️", label: "Settings" },
+          ].map(tab => (
+            <div
+              key={tab.id}
+              style={{ ...styles.navItem(activeTab === tab.id), position: "relative" }}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.badge && <div style={styles.badge}>{tab.badge}</div>}
+              <span style={styles.navIcon}>{tab.icon}</span>
+              <span style={styles.navLabel}>{tab.label}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Format Picker Sheet */}
+        {showFormatPicker && detectedVideo && (
+          <div style={{ ...styles.formatSheet, animation: "slideUp 0.3s ease" }}>
+            <div style={styles.sheetHandle} />
+            <div style={styles.sheetTitle}>Choose Format</div>
+            <div style={styles.sheetSub}>{detectedVideo.title}</div>
+            {FORMATS.map((fmt, i) => (
+              <div
+                key={i}
+                style={styles.formatRow}
+                onClick={() => {
+                  if (fmt.premium) {
+                    setShowRewardAd(true);
+                    return;
+                  }
+                  startDownload(fmt);
+                }}
+              >
+                <span style={{ fontSize: "20px" }}>{fmt.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={styles.formatLabel}>{fmt.label}</div>
+                  <div style={{ ...styles.formatSize }}>{fmt.quality} · {fmt.size}</div>
+                </div>
+                {fmt.premium && <div style={styles.premiumBadge}>PRO</div>}
+                <span style={{ color: theme.accent }}>›</span>
+              </div>
+            ))}
+            <button
+              style={{ ...styles.btnSecondary, width: "100%", marginTop: "8px", textAlign: "center" }}
+              onClick={() => setShowFormatPicker(false)}>
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {/* Rewarded Ad Modal */}
+        {showRewardAd && (
+          <div style={{
+            position: "absolute",
+            inset: 0,
+            background: "rgba(0,0,0,0.9)",
+            zIndex: 100,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "30px",
+          }}>
+            <div style={{
+              background: theme.surface,
+              borderRadius: "24px",
+              padding: "28px 24px",
+              width: "100%",
+              textAlign: "center",
+              border: `1px solid ${theme.border}`,
+            }}>
+              <div style={{ fontSize: "48px", marginBottom: "16px" }}>📺</div>
+              <div style={{ fontSize: "16px", fontWeight: "800", color: theme.text, marginBottom: "8px" }}>
+                Watch a Short Ad
+              </div>
+              <div style={{ fontSize: "13px", color: theme.textSub, marginBottom: "24px" }}>
+                Watch a 15-second ad to unlock 4K download or get a 2x speed boost
+              </div>
+              <div style={{
+                background: darkMode ? "#111" : "#eee",
+                borderRadius: "14px",
+                height: "100px",
+                marginBottom: "20px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: theme.textSub,
+                fontSize: "12px",
+                border: `1px dashed ${theme.border}`,
+              }}>
+                AdMob Rewarded Ad Unit
+              </div>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button
+                  style={{ ...styles.btnSecondary, flex: 1 }}
+                  onClick={() => setShowRewardAd(false)}>
+                  Skip
+                </button>
+                <button
+                  style={{ ...styles.btnPrimary, flex: 1 }}
+                  onClick={() => {
+                    setShowRewardAd(false);
+                    notify("🎁 Speed boost unlocked for 30 min!");
+                  }}>
+                  Watch Ad ▶
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Disclaimer */}
+        {showDisclaimer && (
+          <div style={styles.disclaimer}>
+            <div style={{ ...styles.disclaimerBox, animation: "slideUp 0.3s ease", width: "100%" }}>
+              <div style={styles.disclaimerTitle}>⚖️ Copyright Notice</div>
+              <div style={styles.disclaimerText}>
+                SnapLoad is intended for downloading content you have the legal right to download.
+                Users must respect copyright laws and the terms of service of content platforms.{"\n\n"}
+                This app does not support downloading DRM-protected or restricted content.
+                Downloading copyrighted material without permission may violate laws in your jurisdiction.
+                You are solely responsible for how you use this application.
+              </div>
+              <button style={styles.disclaimerBtn} onClick={() => setShowDisclaimer(false)}>
+                I Understand
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
